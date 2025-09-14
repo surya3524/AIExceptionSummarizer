@@ -1,5 +1,6 @@
 using ErrorSummarizer.Api.Middleware;
 using ErrorSummarizer.Api.Services;
+using ErrorSummarizer.Api.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +19,14 @@ builder.Services.AddSingleton<ILlmClient, FakeLlmClient>();
 builder.Services.AddSingleton<IErrorSummarizer, LlmErrorSummarizer>();
 
 builder.Services.AddControllers();
+builder.Services.AddHttpClient("LlmClient", (sp, client) =>
+{
+    var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<LlmOptions>>().Value;
+    client.BaseAddress = new Uri(opts.Endpoint);
+    client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds);
+    client.DefaultRequestHeaders.Authorization =
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
+});
 
 var app = builder.Build();
 
@@ -37,3 +46,4 @@ app.MapControllers();
 app.Run();
 
 // Remove inline WeatherForecast sample record/controller to simplify
+    
