@@ -1,4 +1,5 @@
 using System.Text;
+using ErrorSummarizer.Api.Options;
 using Microsoft.Extensions.Options;
 
 namespace ErrorSummarizer.Api.Services;

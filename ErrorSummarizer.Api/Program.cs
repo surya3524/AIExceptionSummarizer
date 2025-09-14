@@ -46,4 +46,5 @@ app.MapControllers();
 app.Run();
 
 // Remove inline WeatherForecast sample record/controller to simplify
-    
+
+public partial class Program { }
