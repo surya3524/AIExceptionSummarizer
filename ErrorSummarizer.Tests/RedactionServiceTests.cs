@@ -1,6 +1,7 @@
 using ErrorSummarizer.Api.Services;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Xunit;
 
 public class RedactionServiceTests
 {

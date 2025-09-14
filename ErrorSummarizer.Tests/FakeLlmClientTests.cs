@@ -1,5 +1,6 @@
 using ErrorSummarizer.Api.Services;
 using FluentAssertions;
+using Xunit;
 
 public class FakeLlmClientTests
 {
@@ -9,6 +10,7 @@ public class FakeLlmClientTests
         var client = new FakeLlmClient();
         var prompt = "Exception:\nSystem.NullReferenceException: Oops";
         var result = await client.GetSummaryAsync(prompt);
-        result.RootCauseHypothesis.Should().Contain("null", System.StringComparison.OrdinalIgnoreCase);
+        result.RootCauseHypothesis.Should().NotBeNull();
+        result.RootCauseHypothesis!.ToLowerInvariant().Should().Contain("null");
     }
 }

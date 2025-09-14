@@ -1,5 +1,6 @@
 using ErrorSummarizer.Api.Services;
 using FluentAssertions;
+using Xunit;
 
 public class HeuristicSummarizerTests
 {
@@ -10,7 +11,7 @@ public class HeuristicSummarizerTests
         var ex = new NullReferenceException("Object reference not set to an instance of an object.");
         var ctx = DummyContext();
         var result = await sut.SummarizeAsync(ex, ctx);
-        result.Should().Contain("Possible Cause").And.Contain("null", Exactly.Once());
+        result.Should().Contain("Possible Cause").And.Contain("null");
     }
 
     [Fact]

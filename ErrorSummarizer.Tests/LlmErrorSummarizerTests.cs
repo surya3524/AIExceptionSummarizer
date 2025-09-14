@@ -2,6 +2,7 @@ using ErrorSummarizer.Api.Services;
 using ErrorSummarizer.Api.Options;
 using Microsoft.Extensions.Options;
 using FluentAssertions;
+using Xunit;
 
 public class LlmErrorSummarizerTests
 {
