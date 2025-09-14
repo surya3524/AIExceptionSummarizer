@@ -1,4 +1,5 @@
 using ErrorSummarizer.Api.Middleware;
+using ErrorSummarizer.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -6,8 +7,15 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-// Register summarizer services
-builder.Services.AddSingleton<ErrorSummarizer.Api.Services.IErrorSummarizer, ErrorSummarizer.Api.Services.BasicHeuristicErrorSummarizer>();
+// Options from configuration
+builder.Services.Configure<LlmOptions>(builder.Configuration.GetSection("Llm"));
+
+// Core services
+builder.Services.AddSingleton<BasicHeuristicErrorSummarizer>();
+builder.Services.AddSingleton<IRedactionService, BasicRedactionService>();
+builder.Services.AddSingleton<ILlmClient, FakeLlmClient>();
+// Primary summarizer is LLM wrapper (can fallback internally)
+builder.Services.AddSingleton<IErrorSummarizer, LlmErrorSummarizer>();
 
 builder.Services.AddControllers();
 

@@ -8,10 +8,11 @@ namespace ErrorSummarizer.Api.Services;
 /// </summary>
 public class BasicHeuristicErrorSummarizer : IErrorSummarizer
 {
-    public Task<string> SummarizeAsync(Exception ex, string correlationId)
+    public Task<string> SummarizeAsync(Exception ex, ErrorContext context, CancellationToken ct = default)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"Correlation: {correlationId}");
+        sb.AppendLine($"Correlation: {context.CorrelationId}");
+        sb.AppendLine($"Route: {context.Method} {context.Route}");
         sb.AppendLine($"Type: {ex.GetType().Name}");
         sb.AppendLine($"Message: {ex.Message}");
         if (ex.InnerException != null)
@@ -24,11 +25,35 @@ public class BasicHeuristicErrorSummarizer : IErrorSummarizer
         {
             sb.AppendLine($"Possible Cause: {hint}");
         }
-        // Provide first stack frame only (most relevant origin)
-        var firstLine = ex.StackTrace?.Split('\n').FirstOrDefault(l => l.Contains(" at "))?.Trim();
-        if (!string.IsNullOrWhiteSpace(firstLine))
+        // Include top stack frame(s)
+        if (!string.IsNullOrWhiteSpace(context.TopStackFrame))
         {
-            sb.AppendLine($"Origin: {firstLine}");
+            sb.AppendLine($"Origin: {context.TopStackFrame}");
+        }
+        if (context.TopAppFrames != null && context.TopAppFrames.Count > 1)
+        {
+            sb.AppendLine("Frames:");
+            foreach (var f in context.TopAppFrames.Skip(1))
+            {
+                sb.AppendLine($"  {f}");
+            }
+        }
+        if (context.Headers != null)
+        {
+            sb.AppendLine("Headers:");
+            foreach (var kv in context.Headers)
+                sb.AppendLine($"  {kv.Key}: {kv.Value}");
+        }
+        if (context.Claims != null && context.Claims.Count > 0)
+        {
+            sb.AppendLine("Claims:");
+            foreach (var kv in context.Claims)
+                sb.AppendLine($"  {kv.Key}: {kv.Value}");
+        }
+        if (!string.IsNullOrEmpty(context.SanitizedBody))
+        {
+            sb.AppendLine("Body:");
+            sb.AppendLine(context.SanitizedBody);
         }
         return Task.FromResult(sb.ToString());
     }

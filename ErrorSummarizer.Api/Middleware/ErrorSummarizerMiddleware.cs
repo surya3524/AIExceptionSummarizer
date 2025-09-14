@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using ErrorSummarizer.Api.Services;
 
@@ -9,12 +10,17 @@ public class ErrorSummarizerMiddleware
     private readonly RequestDelegate _next;
     private readonly IErrorSummarizer _summarizer;
     private readonly ILogger<ErrorSummarizerMiddleware> _logger;
+    private readonly IRedactionService _redactor;
 
-    public ErrorSummarizerMiddleware(RequestDelegate next, IErrorSummarizer summarizer, ILogger<ErrorSummarizerMiddleware> logger)
+    private static readonly string[] HeaderAllowList = ["User-Agent", "Accept", "Content-Type", "X-Correlation-Id"];
+    private static readonly string[] ClaimAllowList = ["sub", "name", "oid"];
+
+    public ErrorSummarizerMiddleware(RequestDelegate next, IErrorSummarizer summarizer, ILogger<ErrorSummarizerMiddleware> logger, IRedactionService redactor)
     {
         _next = next;
         _summarizer = summarizer;
         _logger = logger;
+        _redactor = redactor;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -26,11 +32,66 @@ public class ErrorSummarizerMiddleware
         }
         catch (Exception ex)
         {
-            var summary = await _summarizer.SummarizeAsync(ex, correlationId);
-            _logger.LogError(ex, "{Summary}", summary);
-            await WriteProblemDetailsAsync(context, ex, summary, correlationId);
+            var errCtx = await BuildContextAsync(context, ex, correlationId);
+            string summary;
+            try
+            {
+                summary = await _summarizer.SummarizeAsync(ex, errCtx, context.RequestAborted);
+            }
+            catch (Exception summarizerEx)
+            {
+                summary = $"Heuristic fallback. Summarizer failure: {summarizerEx.Message}";
+            }
+            _logger.LogError(ex, "Error CorrelationId={CorrelationId} Type={Type} Route={Method} {Route} Summary={Summary}", correlationId, ex.GetType().Name, context.Request.Method, context.Request.Path, summary);
+            await WriteProblemDetailsAsync(context, ex, correlationId);
         }
     }
+
+    private async Task<ErrorContext> BuildContextAsync(HttpContext ctx, Exception ex, string correlationId)
+    {
+        string? body = null;
+        if (CanReadBody(ctx))
+        {
+            try
+            {
+                ctx.Request.EnableBuffering();
+                using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8, leaveOpen: true);
+                var raw = await reader.ReadToEndAsync();
+                ctx.Request.Body.Position = 0;
+                body = _redactor.RedactBody(raw);
+            }
+            catch { /* swallow body read problems */ }
+        }
+
+        var headers = _redactor.RedactHeaders(ctx.Request.Headers, HeaderAllowList);
+        var claims = ctx.User?.Identity?.IsAuthenticated == true ? _redactor.RedactClaims(ctx.User.Claims, ClaimAllowList) : new Dictionary<string,string>();
+
+        var frames = ex.StackTrace?.Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.StartsWith("at "))
+            .Take(8)
+            .ToList();
+        var top = frames?.FirstOrDefault();
+        var appFrames = frames?.Where(f => !f.Contains("Microsoft.") && !f.Contains("System."))
+            .Take(5)
+            .ToList();
+        return new ErrorContext
+        {
+            CorrelationId = correlationId,
+            Method = ctx.Request.Method,
+            Route = ctx.Request.Path.Value ?? string.Empty,
+            Headers = new Dictionary<string,string>(headers),
+            Claims = new Dictionary<string,string>(claims!),
+            SanitizedBody = body,
+            EnvironmentName = ctx.RequestServices.GetService<IHostEnvironment>()?.EnvironmentName,
+            UserAgent = headers.TryGetValue("User-Agent", out var ua) ? ua : null,
+            TopStackFrame = top,
+            TopAppFrames = appFrames
+        };
+    }
+
+    private static bool CanReadBody(HttpContext ctx)
+        => ctx.Request.ContentLength is > 0 && (ctx.Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true || ctx.Request.ContentType?.Contains("text", StringComparison.OrdinalIgnoreCase) == true) && string.Equals(ctx.Request.Method, "GET", StringComparison.OrdinalIgnoreCase) == false;
 
     private static string EnsureCorrelationId(HttpContext ctx)
     {
@@ -49,7 +110,7 @@ public class ErrorSummarizerMiddleware
         }
     }
 
-    private static async Task WriteProblemDetailsAsync(HttpContext context, Exception ex, string summary, string correlationId)
+    private static async Task WriteProblemDetailsAsync(HttpContext context, Exception ex, string correlationId)
     {
         if (context.Response.HasStarted) return;
         context.Response.Clear();
@@ -62,10 +123,8 @@ public class ErrorSummarizerMiddleware
             title = "An unexpected error occurred",
             status = 500,
             correlationId,
-            detail = ex.Message,
-            summary,
-            exceptionType = ex.GetType().FullName,
-            stackTraceTop = ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()
+            detail = "Unhandled server error.",
+            exceptionType = ex.GetType().FullName
         };
         await context.Response.WriteAsync(JsonSerializer.Serialize(problem));
     }
