@@ -14,7 +14,8 @@ builder.Services.Configure<LlmOptions>(builder.Configuration.GetSection("Llm"));
 // Core services
 builder.Services.AddSingleton<BasicHeuristicErrorSummarizer>();
 builder.Services.AddSingleton<IRedactionService, BasicRedactionService>();
-builder.Services.AddSingleton<ILlmClient, FakeLlmClient>();
+// Replace fake client with real HTTP based client
+builder.Services.AddHttpClient<ILlmClient, OpenAiLlmClient>(client => { });
 // Primary summarizer is LLM wrapper (can fallback internally)
 builder.Services.AddSingleton<IErrorSummarizer, LlmErrorSummarizer>();
 
