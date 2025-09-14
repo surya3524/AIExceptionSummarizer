@@ -37,7 +37,7 @@ public class LlmErrorSummarizerTests
         var opts = Options.Create(new LlmOptions { Enabled = true, TimeoutSeconds = 5 });
         var sut = new LlmOnlyErrorSummarizer(new TestClient(), opts);
 
-        var summary = await sut.SummarizeAsync(new Exception("Boom"), DummyContext());
+        var summary = await sut.SummarizeAsync(new Exception("HttpStatusCode.NotFound"), DummyContext());
         summary.Should().Contain("--- AI Analysis ---").And.Contain("RootCauseHypothesis");
     }
 
