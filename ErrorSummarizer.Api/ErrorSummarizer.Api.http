@@ -1,0 +1,6 @@
+@ErrorSummarizer.Api_HostAddress = http://localhost:5232
+
+GET {{ErrorSummarizer.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
