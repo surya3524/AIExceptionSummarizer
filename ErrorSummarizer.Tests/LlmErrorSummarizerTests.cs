@@ -19,25 +19,23 @@ public class LlmErrorSummarizerTests
     }
 
     [Fact]
-    public async Task Disabled_UsesFallbackOnly()
+    public async Task Disabled_ReturnsBasicMessage()
     {
         var opts = Options.Create(new LlmOptions { Enabled = false });
-        var fallback = new BasicHeuristicErrorSummarizer();
-        var sut = new LlmErrorSummarizer(new TestClient(), opts, fallback);
+        var sut = new LlmOnlyErrorSummarizer(new TestClient(), opts);
 
         var ex = new Exception("Boom");
         var ctx = DummyContext();
         var summary = await sut.SummarizeAsync(ex, ctx);
 
-        summary.Should().NotContain("--- AI Analysis ---");
+        summary.Should().Contain("LLM disabled");
     }
 
     [Fact]
     public async Task Enabled_IncludesAiSection()
     {
         var opts = Options.Create(new LlmOptions { Enabled = true, TimeoutSeconds = 5 });
-        var fallback = new BasicHeuristicErrorSummarizer();
-        var sut = new LlmErrorSummarizer(new TestClient(), opts, fallback);
+        var sut = new LlmOnlyErrorSummarizer(new TestClient(), opts);
 
         var summary = await sut.SummarizeAsync(new Exception("Boom"), DummyContext());
         summary.Should().Contain("--- AI Analysis ---").And.Contain("RootCauseHypothesis");

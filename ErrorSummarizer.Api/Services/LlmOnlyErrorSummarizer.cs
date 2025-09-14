@@ -1,29 +1,29 @@
 using System.Text;
-using ErrorSummarizer.Api.Options;
 using Microsoft.Extensions.Options;
+using ErrorSummarizer.Api.Options;
 
 namespace ErrorSummarizer.Api.Services;
 
 /// <summary>
-/// LLM-backed summarizer (wraps an ILlmClient). Falls back to heuristic if disabled.
+/// Summarizer that only uses the LLM client; if disabled or failure, returns a minimal message.
 /// </summary>
-public class LlmErrorSummarizer : IErrorSummarizer
+public sealed class LlmOnlyErrorSummarizer : IErrorSummarizer
 {
     private readonly ILlmClient _client;
-    private readonly IErrorSummarizer _fallback;
     private readonly LlmOptions _options;
 
-    public LlmErrorSummarizer(ILlmClient client, IOptions<LlmOptions> options, BasicHeuristicErrorSummarizer fallback)
+    public LlmOnlyErrorSummarizer(ILlmClient client, IOptions<LlmOptions> options)
     {
         _client = client;
-        _fallback = fallback;
         _options = options.Value;
     }
 
     public async Task<string> SummarizeAsync(Exception ex, ErrorContext context, CancellationToken ct = default)
     {
-        if (!_options.Enabled) return await _fallback.SummarizeAsync(ex, context, ct);
-
+        if (!_options.Enabled)
+        {
+            return Basic(ex, context, disabled: true);
+        }
         try
         {
             var prompt = BuildPrompt(ex, context);
@@ -37,14 +37,14 @@ public class LlmErrorSummarizer : IErrorSummarizer
             sb.AppendLine($"Message: {ex.Message}");
             sb.AppendLine("--- AI Analysis ---");
             sb.AppendLine($"RootCauseHypothesis: {result.RootCauseHypothesis}");
-            sb.AppendLine($"LikelyComponent: {result.LikelyComponent}");
-            sb.AppendLine($"ImmediateFix: {result.ImmediateFix}");
-            sb.AppendLine($"LongTermPrevention: {result.LongTermPrevention}");
+            if (!string.IsNullOrWhiteSpace(result.LikelyComponent)) sb.AppendLine($"LikelyComponent: {result.LikelyComponent}");
+            if (!string.IsNullOrWhiteSpace(result.ImmediateFix)) sb.AppendLine($"ImmediateFix: {result.ImmediateFix}");
+            if (!string.IsNullOrWhiteSpace(result.LongTermPrevention)) sb.AppendLine($"LongTermPrevention: {result.LongTermPrevention}");
             return sb.ToString();
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            return await _fallback.SummarizeAsync(ex, context, ct);
+            return Basic(ex, context, failure: e.Message);
         }
     }
 
@@ -65,6 +65,18 @@ public class LlmErrorSummarizer : IErrorSummarizer
         if (ctx.Headers != null) foreach (var kv in ctx.Headers) sb.AppendLine($"Header: {kv.Key}={kv.Value}");
         if (ctx.Claims != null) foreach (var kv in ctx.Claims) sb.AppendLine($"Claim: {kv.Key}={kv.Value}");
         if (!string.IsNullOrEmpty(ctx.SanitizedBody)) sb.AppendLine($"Body: {ctx.SanitizedBody}");
+        return sb.ToString();
+    }
+
+    private static string Basic(Exception ex, ErrorContext ctx, bool disabled = false, string? failure = null)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Correlation: {ctx.CorrelationId}");
+        sb.AppendLine($"Route: {ctx.Method} {ctx.Route}");
+        sb.AppendLine($"Type: {ex.GetType().Name}");
+        sb.AppendLine($"Message: {ex.Message}");
+        if (disabled) sb.AppendLine("LLM disabled.");
+        if (failure != null) sb.AppendLine($"LLM failure: {failure}");
         return sb.ToString();
     }
 }

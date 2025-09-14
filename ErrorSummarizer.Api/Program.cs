@@ -12,12 +12,11 @@ builder.Services.AddOpenApi();
 builder.Services.Configure<LlmOptions>(builder.Configuration.GetSection("Llm"));
 
 // Core services
-builder.Services.AddSingleton<BasicHeuristicErrorSummarizer>();
 builder.Services.AddSingleton<IRedactionService, BasicRedactionService>();
-// Replace fake client with real HTTP based client
-builder.Services.AddHttpClient<ILlmClient, OpenAiLlmClient>(client => { });
-// Primary summarizer is LLM wrapper (can fallback internally)
-builder.Services.AddSingleton<IErrorSummarizer, LlmErrorSummarizer>();
+// Register OpenAI client
+builder.Services.AddHttpClient<ILlmClient, OpenAiLlmClient>();
+// LLM summarizer only (no fallback now) - provide a minimal wrapper implementation
+builder.Services.AddSingleton<IErrorSummarizer, LlmOnlyErrorSummarizer>();
 
 builder.Services.AddControllers();
 builder.Services.AddHttpClient("LlmClient", (sp, client) =>
@@ -48,4 +47,4 @@ app.Run();
 
 // Remove inline WeatherForecast sample record/controller to simplify
 
-public partial class Program { }
+public partial class Program { }public partial class Program { }
